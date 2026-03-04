@@ -1,0 +1,1 @@
+# trading_idea_gab
