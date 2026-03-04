@@ -1,0 +1,103 @@
+# .github/workflows/daily-trading-ideas.yml
+#
+# This workflow runs at 9:00 AM HKT (1:00 AM UTC) on weekdays.
+# It calls the Anthropic API with web search to generate a trading ideas report,
+# saves it as markdown, updates the index, and deploys to GitHub Pages.
+
+name: Daily Trading Ideas
+
+on:
+  schedule:
+    # 1:00 AM UTC = 9:00 AM HKT, Monday–Friday
+    - cron: '0 1 * * 1-5'
+
+  # Allow manual trigger from GitHub UI
+  workflow_dispatch:
+    inputs:
+      date_override:
+        description: 'Override date (YYYY-MM-DD), leave blank for today'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  generate-report:
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      TZ: Asia/Hong_Kong
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install anthropic
+
+      - name: Determine date
+        id: date
+        run: |
+          if [ -n "${{ github.event.inputs.date_override }}" ]; then
+            echo "date=${{ github.event.inputs.date_override }}" >> $GITHUB_OUTPUT
+          else
+            echo "date=$(date +%Y-%m-%d)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate trading ideas report
+        run: |
+          python scripts/generate_report.py \
+            --date "${{ steps.date.outputs.date }}" \
+            --output "docs/reports/trading-ideas-${{ steps.date.outputs.date }}.md"
+
+      - name: Update index.json
+        run: |
+          python scripts/update_index.py --reports-dir docs/reports
+
+      - name: Commit and push
+        run: |
+          git config user.name "Trading Bot"
+          git config user.email "bot@trading-ideas.github.io"
+          git add docs/
+          git diff --staged --quiet || {
+            git commit -m "📊 Trading ideas — ${{ steps.date.outputs.date }}"
+            git push
+          }
+
+  # Deploy to GitHub Pages
+  deploy:
+    needs: generate-report
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main  # Pull latest after the commit above
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
