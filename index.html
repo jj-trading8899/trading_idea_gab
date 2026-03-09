@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily Trading Ideas</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Georgia,serif;background:#06090d;color:#c8d6e0;min-height:100vh;line-height:1.7}
+header{border-bottom:1px solid #1a2332;padding:28px 40px 20px;display:flex;justify-content:space-between;align-items:flex-end;background:linear-gradient(180deg,#0a0f16,#06090d)}
+.label{font-family:monospace;font-size:10px;letter-spacing:2.5px;color:#3d8af7;font-weight:700;text-transform:uppercase}
+h1{font-size:26px;font-weight:300;color:#e8dcc8;margin-top:4px;letter-spacing:-0.5px}
+.hdr-right{text-align:right;font-family:monospace}
+.date{font-size:15px;color:#e8dcc8;font-weight:500}
+.source{font-size:10px;color:#5a7a94;margin-top:3px}
+.date-nav{display:flex;gap:6px;padding:12px 40px;border-bottom:1px solid #1a2332;overflow-x:auto;background:#080c11}
+.date-nav a{font-family:monospace;font-size:11px;padding:4px 12px;border-radius:3px;color:#5a7a94;text-decoration:none;border:1px solid transparent;white-space:nowrap}
+.date-nav a:hover{color:#c8d6e0;border-color:#1a2332}
+.date-nav a.active{color:#3d8af7;border-color:#3d8af7;background:rgba(61,138,247,0.08)}
+main{max-width:960px;margin:0 auto;padding:28px 40px 60px}
+.loading{text-align:center;padding:80px 0;font-family:monospace;font-size:13px;color:#5a7a94}
+.error{background:rgba(214,48,49,0.08);border:1px solid rgba(214,48,49,0.2);border-radius:6px;padding:20px 24px;font-family:monospace;font-size:13px;color:#d63031;margin:40px 0}
+.report h1{font-size:22px;font-weight:300;color:#e8dcc8;margin:32px 0 16px;padding-bottom:8px;border-bottom:1px solid #1a2332}
+.report h2{font-family:monospace;font-size:14px;font-weight:500;color:#3d8af7;letter-spacing:1px;margin:28px 0 12px;text-transform:uppercase}
+.report h3{font-family:monospace;font-size:12px;font-weight:500;color:#d4a574;letter-spacing:1.5px;margin:22px 0 8px;text-transform:uppercase}
+.report h4{font-family:monospace;font-size:11px;color:#3d6b8f;letter-spacing:1.2px;margin:18px 0 6px;text-transform:uppercase}
+.report p{margin:8px 0;font-size:14.5px}
+.report strong{color:#e8dcc8;font-weight:600}
+.report ul,.report ol{margin:8px 0 8px 20px;font-size:14px}
+.report li{margin:4px 0;padding-left:4px}
+.report table{width:100%;border-collapse:collapse;margin:12px 0;font-family:monospace;font-size:12.5px}
+.report th{text-align:left;padding:8px 12px;border-bottom:2px solid #1e3a5f;color:#3d6b8f;font-weight:500;font-size:10px;letter-spacing:1px;text-transform:uppercase}
+.report td{padding:7px 12px;border-bottom:1px solid #1a2332}
+.report tr:hover td{background:#111920}
+.report blockquote{border-left:3px solid #3d8af7;padding:8px 16px;margin:12px 0;background:rgba(61,138,247,0.04);font-style:italic;color:#5a7a94}
+.report hr{border:none;border-top:1px solid #1a2332;margin:28px 0}
+footer{max-width:960px;margin:0 auto;padding:0 40px 40px;font-family:monospace;font-size:10px;color:#2a3d50;line-height:1.7;border-top:1px solid #1a2332;padding-top:16px}
+@media(max-width:640px){header{padding:20px;flex-direction:column;align-items:flex-start;gap:8px}.hdr-right{text-align:left}.date-nav{padding:10px 20px}main{padding:20px}footer{padding:0 20px 30px}}
+</style>
+</head>
+<body>
+
+<header>
+<div>
+<div class="label">Absolute Return Fund</div>
+<h1>Daily Trading Ideas</h1>
+</div>
+<div class="hdr-right">
+<div class="date" id="currentDate"></div>
+<div class="source">Source: AAStocks.com / Broker Research</div>
+</div>
+</header>
+
+<nav class="date-nav" id="dateNav"></nav>
+
+<main>
+<div class="loading" id="loading">Loading report...</div>
+<div class="report" id="report" style="display:none"></div>
+<div class="error" id="error" style="display:none"></div>
+</main>
+
+<footer>
+<strong style="color:#3d6b8f">Disclaimer:</strong> This document is for informational and discussion purposes only. It does not constitute investment advice or a recommendation to buy or sell any security. All trade ideas are speculative and involve risk of loss. Past performance is not indicative of future results.
+</footer>
+
+<script>
+// index.html at ROOT pointing to ./reports/ subfolder
+var REPORTS_DIR = './reports/';
+var INDEX_FILE = './reports/index.json';
+
+function formatDate(s) {
+  var d = new Date(s + 'T00:00:00');
+  return d.toLocaleDateString('en-GB', {weekday:'short',day:'numeric',month:'short',year:'numeric'});
+}
+
+function getDateParam() {
+  var p = new URLSearchParams(window.location.search);
+  return p.get('date');
+}
+
+function loadIndex() {
+  console.log('Loading index from:', INDEX_FILE);
+  return fetch(INDEX_FILE)
+    .then(function(r) { 
+      if (!r.ok) {
+        console.error('Failed to fetch index.json:', r.status, r.statusText);
+        throw new Error('Could not load index.json from ' + INDEX_FILE);
+      }
+      console.log('Index loaded successfully');
+      return r.json(); 
+    })
+    .then(function(data) {
+      if (data.reports && Array.isArray(data.reports)) {
+        var dates = data.reports.map(function(report) { return report.date; });
+        console.log('Available dates from index:', dates);
+        return dates;
+      }
+      throw new Error('Invalid index.json format');
+    })
+    .catch(function(err) {
+      console.error('Error loading index:', err);
+      var dates = [];
+      for (var i = 0; i < 7; i++) {
+        var d = new Date();
+        d.setDate(d.getDate() - i);
+        if (d.getDay() !== 0 && d.getDay() !== 6) dates.push(d.toISOString().split('T')[0]);
+      }
+      console.log('Using fallback dates:', dates);
+      return dates;
+    });
+}
+
+function buildNav(dates, active) {
+  var nav = document.getElementById('dateNav');
+  nav.innerHTML = '';
+  dates.slice(0, 15).forEach(function(date) {
+    var a = document.createElement('a');
+    a.href = '?date=' + date;
+    a.textContent = formatDate(date);
+    if (date === active) a.className = 'active';
+    nav.appendChild(a);
+  });
+}
+
+function loadReport(date) {
+  var loading = document.getElementById('loading');
+  var report = document.getElementById('report');
+  var error = document.getElementById('error');
+  document.getElementById('currentDate').textContent = formatDate(date);
+
+  loading.style.display = 'block';
+  report.style.display = 'none';
+  error.style.display = 'none';
+
+  var filename = 'trading-ideas-' + date + '.md';
+  var filepath = REPORTS_DIR + filename;
+  console.log('Fetching report from:', filepath);
+
+  fetch(filepath)
+    .then(function(r) { 
+      if (!r.ok) {
+        console.error('Failed to fetch markdown:', r.status, r.statusText);
+        throw new Error('Report not found: ' + filename);
+      }
+      console.log('Markdown file loaded, parsing...');
+      return r.text(); 
+    })
+    .then(function(md) {
+      console.log('Markdown parsed successfully');
+      report.innerHTML = marked.parse(md);
+      report.style.display = 'block';
+      loading.style.display = 'none';
+    })
+    .catch(function(err) {
+      console.error('Error loading report:', err);
+      error.textContent = '⚠️ ' + err.message + ' [Expected location: ' + filepath + ']';
+      error.style.display = 'block';
+      loading.style.display = 'none';
+    });
+}
+
+console.log('===== Daily Trading Ideas Page =====');
+console.log('Index file:', INDEX_FILE);
+console.log('Reports directory:', REPORTS_DIR);
+console.log('=====================================');
+
+loadIndex().then(function(dates) {
+  console.log('Loaded', dates.length, 'available dates');
+  var requested = getDateParam();
+  var active = (requested && dates.indexOf(requested) !== -1) ? requested : dates[0];
+  console.log('Active date:', active);
+  buildNav(dates, active);
+  if (active) loadReport(active);
+});
+</script>
+
+</body>
+</html>
